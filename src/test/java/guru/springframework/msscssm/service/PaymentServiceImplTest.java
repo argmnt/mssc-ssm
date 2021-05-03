@@ -41,4 +41,17 @@ class PaymentServiceImplTest {
         System.out.println(sm.getState().getId());
         assertEquals(sm.getState().getId(), PaymentState.PRE_AUTH);
     }
+
+    @Test
+    void testAuth() {
+            Payment savedPayment = paymentService.newPayment(payment);
+            StateMachine<PaymentState, PaymentEvent> preAuthSM = paymentService.preAuth(savedPayment.getId());
+            System.out.println(preAuthSM.getState().getId());
+            StateMachine<PaymentState, PaymentEvent> authSM = paymentService.authorizePayment(savedPayment.getId());
+            Optional<Payment> authedPaymentOptional = paymentRepository.findById(savedPayment.getId());
+            Payment authedPayment = authedPaymentOptional.get();
+            System.out.println(authedPayment);
+            System.out.println(authSM.getState().getId());
+            assertEquals(authSM.getState().getId(), PaymentState.AUTH);
+        }
 }
