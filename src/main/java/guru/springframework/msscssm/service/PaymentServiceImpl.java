@@ -3,6 +3,7 @@ package guru.springframework.msscssm.service;
 import guru.springframework.msscssm.domain.Payment;
 import guru.springframework.msscssm.domain.PaymentEvent;
 import guru.springframework.msscssm.domain.PaymentState;
+import guru.springframework.msscssm.interceptor.PaymentStateChangeInterceptor;
 import guru.springframework.msscssm.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.Message;
@@ -10,43 +11,52 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.statemachine.StateMachine;
 import org.springframework.statemachine.config.StateMachineFactory;
 import org.springframework.statemachine.support.DefaultStateMachineContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
 @RequiredArgsConstructor
+@Service
 public class PaymentServiceImpl implements PaymentService {
 
-    private final String PAYMENT_ID_HEADER = "payment_id";
+    public final static String PAYMENT_ID_HEADER = "payment_id";
 
     private final PaymentRepository paymentRepository;
 
     private final StateMachineFactory<PaymentState, PaymentEvent> stateMachineFactory;
 
+    private final PaymentStateChangeInterceptor paymentStateChangeInterceptor;
+
+    @Transactional
     @Override
     public Payment newPayment(Payment payment) {
         payment.setPaymentState(PaymentState.NEW);
         return paymentRepository.save(payment);
     }
 
+    @Transactional
     @Override
     public StateMachine<PaymentState, PaymentEvent> preAuth(Long paymentId) {
         StateMachine<PaymentState, PaymentEvent> sm = buildStateMachine(paymentId);
-        sendEvent(paymentId, sm, PaymentEvent.PRE_AUTHORIZE);
-        return null;
+        sendEvent(paymentId, sm, PaymentEvent.PRE_AUTH_APPROVED);
+        return sm;
     }
 
+    @Transactional
     @Override
     public StateMachine<PaymentState, PaymentEvent> authorizePayment(Long paymentId) {
         StateMachine<PaymentState, PaymentEvent> sm = buildStateMachine(paymentId);
         sendEvent(paymentId, sm, PaymentEvent.AUTH_APPROVED);
-        return null;
+        return sm;
     }
 
+    @Transactional
     @Override
     public StateMachine<PaymentState, PaymentEvent> declineAuth(Long paymentId) {
         StateMachine<PaymentState, PaymentEvent> sm = buildStateMachine(paymentId);
         sendEvent(paymentId, sm, PaymentEvent.AUTH_DECLINED);
-        return null;
+        return sm;
     }
 
     private void sendEvent(long paymentId, StateMachine<PaymentState, PaymentEvent> sm,
@@ -66,6 +76,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         sm.getStateMachineAccessor()
                 .doWithAllRegions(sma -> {
+                    sma.addStateMachineInterceptor(paymentStateChangeInterceptor);
                     sma.resetStateMachine(new DefaultStateMachineContext<PaymentState, PaymentEvent>(
                             payment.getPaymentState(), null, null, null));
                 });
